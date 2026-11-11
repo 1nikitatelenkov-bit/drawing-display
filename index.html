@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=600, height=600, initial-scale=1">
+<meta name="mrbd-web-app-capable" content="yes">
+<title>Drawing Display — trace on Meta Display glasses</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{background:#111;height:100%}
+  body{font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#fdf6ec;
+       display:flex;align-items:center;justify-content:center;min-height:100vh}
+  #app{position:relative;width:600px;height:600px;background:#000;overflow:hidden;flex:0 0 auto}
+  .screen{position:absolute;inset:0;display:none;flex-direction:column;padding:18px 22px}
+  .screen.active{display:flex}
+  .topbar{display:flex;align-items:center;justify-content:space-between;height:34px;margin-bottom:8px}
+  .brand{font-size:20px;font-weight:700;letter-spacing:.4px;color:#ffe9c9}
+  .brand .dot{color:#f5a83d}
+  .chip{font-size:13px;font-weight:800;letter-spacing:1.5px;color:#23160a;background:#f5a83d;
+        border-radius:999px;padding:4px 12px}
+  .stitle{font-size:23px;font-weight:800;margin:2px 0 4px}
+  .muted{color:#c9b391}
+  .fz{border:3px solid transparent;border-radius:14px;cursor:pointer}
+  .fz.hl{border-color:#f5a83d;background:#2a1d0e}
+  button.fz{font:inherit;color:inherit;background:#1d150c;text-align:left}
+  button.fz:disabled{opacity:.45;cursor:default}
+  /* gallery */
+  #grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:8px}
+  .tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+        height:118px;padding:8px 4px;background:#171008;width:100%}
+  .tile svg{width:62px;height:62px;stroke:#ffe9c9;fill:none;stroke-width:3;
+            stroke-linecap:round;stroke-linejoin:round}
+  .tile svg .filldot{fill:#ffe9c9;stroke:none}
+  .tile .tname{font-size:15px;font-weight:600;color:#f3e3c8}
+  .tile.last{box-shadow:inset 0 0 0 1px #6b4d22}
+  #homeActions{display:flex;gap:10px;margin-top:12px}
+  .bigbtn{flex:1;padding:13px 14px;font-size:19px;font-weight:700;text-align:center}
+  .bigbtn.primary{background:#c97a1d}
+  .bigbtn.primary.hl{background:#e88f26}
+  #homeFoot{margin-top:auto;display:flex;justify-content:space-between;align-items:center}
+  .ver{font-size:14px;color:#8a7452}
+  /* trace */
+  #stage{position:relative;flex:1;overflow:hidden;border-radius:12px;background:#000}
+  #stageImgWrap{position:absolute;left:50%;top:50%;width:430px;height:430px;
+                margin-left:-215px;margin-top:-215px;display:flex;align-items:center;justify-content:center}
+  #stageImg{max-width:100%;max-height:100%;transform-origin:center center}
+  #stageImg svg{width:100%;height:100%;stroke:#fff;fill:none;stroke-width:2.6;
+                stroke-linecap:round;stroke-linejoin:round;display:block}
+  #stageImg svg .filldot{fill:#fff;stroke:none}
+  #stageImg img{max-width:100%;max-height:100%;display:block}
+  @keyframes fadeScale{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:scale(1)}}
+  .enterAnim{animation:fadeScale .45s ease}
+  #stageHint{position:absolute;left:0;right:0;bottom:6px;text-align:center;font-size:14px;color:#9c8461}
+  #controls{margin-top:10px;display:flex;flex-direction:column;gap:8px}
+  .crow{display:flex;gap:8px}
+  .cbtn{flex:1;padding:10px 8px;font-size:18px;font-weight:700;text-align:center}
+  .cbtn.small{font-size:16px}
+  .cbtn.on{background:#5a3a10;border-color:#f5a83d}
+  .cbtn.on.hl{background:#6e4712}
+  #sliderCell{flex:1;display:flex;align-items:center;gap:12px;padding:10px 14px;background:#1d150c}
+  #sliderCell .lab{font-size:16px;font-weight:700;white-space:nowrap}
+  #sliderTrack{flex:1;height:10px;border-radius:99px;background:#3a2a14;position:relative}
+  #sliderFill{position:absolute;left:0;top:0;bottom:0;border-radius:99px;background:#f5a83d}
+  #sliderVal{font-size:16px;font-weight:700;min-width:44px;text-align:right}
+  #modeBanner{display:none;font-size:15px;font-weight:700;color:#ffd9a0;background:#2a1d0e;
+              border-radius:10px;padding:7px 12px;text-align:center}
+  #modeBanner.show{display:block}
+  /* trace-clean overlay: everything hidden except the image */
+  #app.clean .screen{padding:0}
+  #app.clean #controls,#app.clean .topbar,#app.clean #stageHint{display:none}
+  #app.clean #stage{border-radius:0}
+  /* uploads */
+  .urow{display:flex;gap:10px;width:100%;margin-top:8px}
+  .urow .open{flex:1;padding:12px 14px;font-size:18px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .urow .del{flex:0 0 64px;padding:12px 0;font-size:18px;text-align:center;color:#ffb0a0}
+  #upEmpty{margin-top:26px;font-size:17px;color:#c9b391;text-align:center;line-height:1.45}
+  .hidden{display:none!important}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ======================= HOME / GALLERY (root = pause hub) ======================= -->
+  <section class="screen" id="scr-home">
+    <div class="topbar">
+      <div class="brand">Drawing <span class="dot">Display</span></div>
+      <div class="chip">TRACE</div>
+    </div>
+    <div class="stitle">Pick a picture to trace</div>
+    <div class="muted" style="font-size:15px">It floats over your paper — set the transparency and draw through it.</div>
+    <div id="grid"></div>
+    <div id="homeActions">
+      <button class="fz bigbtn primary" id="btnUpload">＋ Upload your own</button>
+      <button class="fz bigbtn" id="btnMine">My pictures (0)</button>
+    </div>
+    <div id="homeFoot">
+      <div class="ver">build Nov 11 v1</div>
+      <div class="ver">Swipe to move · pinch to open · middle pinch = Back</div>
+    </div>
+  </section>
+
+  <!-- ======================= TRACE VIEW ======================= -->
+  <section class="screen" id="scr-trace">
+    <div class="topbar">
+      <div class="brand" id="traceName">Trace</div>
+      <div class="chip" id="traceKind">LINE ART</div>
+    </div>
+    <div id="stage">
+      <div id="stageImgWrap"><div id="stageImg"></div></div>
+      <div id="stageHint">Pinch “Trace” below to hide all controls</div>
+    </div>
+    <div id="modeBanner"></div>
+    <div id="controls"></div>
+  </section>
+
+  <!-- ======================= MY PICTURES / UPLOADS ======================= -->
+  <section class="screen" id="scr-uploads">
+    <div class="topbar">
+      <div class="brand">My <span class="dot">pictures</span></div>
+      <div class="chip">UPLOAD</div>
+    </div>
+    <div class="stitle">Your pictures</div>
+    <div class="muted" style="font-size:15px">Added on this device, stored in the glasses browser. Open one, then try Outline mode.</div>
+    <button class="fz bigbtn primary" id="btnAdd" style="margin-top:12px">＋ Add a picture</button>
+    <div id="upList"></div>
+    <div id="upEmpty">No pictures yet.<br>Add a photo and trace it as a picture —<br>or switch Outline mode on to trace its lines.</div>
+    <div id="homeFoot2" style="margin-top:auto"><div class="ver">Middle pinch goes back</div></div>
+  </section>
+
+  <input type="file" id="fileInput" accept="image/*" class="hidden">
+</div>
+
+<script>
+'use strict';
+/* ================================================================
+   Drawing Display v1 — trace pictures on Meta Ray-Ban Display.
+   Input model (same as Chess/Bible/Mail): swipes = arrow keydowns,
+   pinch = Enter, middle-finger pinch = Back (the glasses shell
+   turns it into a history pop). Activation comes ONLY from the
+   explicit cursor below — never from DOM focus.
+   ================================================================ */
+function $(id){ return document.getElementById(id); }
+
+/* ---------------- preloaded line-art (inline SVG) ---------------- */
+function svgWrap(inner){ return '<svg viewBox="0 0 100 100">' + inner + '</svg>'; }
+var PRESETS = [
+ { id:'cat',   name:'Cat',   svg: svgWrap('<circle cx="50" cy="55" r="25"/><path d="M33 40 L29 17 L47 29"/><path d="M67 40 L71 17 L53 29"/><circle class="filldot" cx="41" cy="52" r="2.6"/><circle class="filldot" cx="59" cy="52" r="2.6"/><path d="M47 62 h6 l-3 4 z"/><path d="M14 58 h14 M16 68 l13-3 M86 58 H72 M84 68 l-13-3"/>') },
+ { id:'dog',   name:'Dog',   svg: svgWrap('<circle cx="50" cy="52" r="25"/><path d="M28 38 Q16 58 27 71"/><path d="M72 38 Q84 58 73 71"/><ellipse cx="50" cy="64" rx="12" ry="9"/><ellipse cx="50" cy="60" rx="5" ry="3.4"/><circle class="filldot" cx="40" cy="47" r="2.6"/><circle class="filldot" cx="60" cy="47" r="2.6"/>') },
+ { id:'fish',  name:'Fish',  svg: svgWrap('<path d="M14 50 Q38 24 64 50 Q38 76 14 50 Z"/><path d="M64 50 L86 34 Q81 50 86 66 Z"/><circle class="filldot" cx="31" cy="45" r="2.8"/><path d="M40 38 Q46 50 40 62"/>') },
+ { id:'bird',  name:'Bird',  svg: svgWrap('<path d="M29 60 Q27 34 50 31 Q73 34 71 57 Q61 72 45 68 Q32 65 29 60 Z"/><path d="M39 53 Q51 43 61 54"/><circle class="filldot" cx="60" cy="42" r="2.6"/><path d="M71 41 L85 47 L71 52"/><path d="M44 68 v11 M57 68 v11 M39 79 h9 M52 79 h9"/>') },
+ { id:'butterfly', name:'Butterfly', svg: svgWrap('<path d="M48 44 Q24 22 21 43 Q18 61 46 57"/><path d="M46 59 Q26 60 31 75 Q35 87 48 67"/><path d="M52 44 Q76 22 79 43 Q82 61 54 57"/><path d="M54 59 Q74 60 69 75 Q65 87 52 67"/><path d="M50 37 v35"/><path d="M50 37 Q42 26 35 25 M50 37 Q58 26 65 25"/>') },
+ { id:'owl',   name:'Owl',   svg: svgWrap('<path d="M50 14 Q73 14 73 47 Q73 82 50 86 Q27 82 27 47 Q27 14 50 14 Z"/><path d="M30 22 L38 33 M70 22 L62 33"/><circle cx="40" cy="43" r="7.5"/><circle cx="60" cy="43" r="7.5"/><circle class="filldot" cx="40" cy="43" r="2.6"/><circle class="filldot" cx="60" cy="43" r="2.6"/><path d="M46 55 h8 l-4 5 z"/><path d="M36 70 Q50 78 64 70"/><path d="M40 86 v5 M60 86 v5"/>') },
+ { id:'star',  name:'Star',  svg: svgWrap('<path d="M50 11 L62 38 L90 38 L67 56 L75 85 L50 68 L25 85 L33 56 L10 38 L38 38 Z"/>') },
+ { id:'heart', name:'Heart', svg: svgWrap('<path d="M50 84 C18 59 15 39 29 26 C41 15 50 25 50 33 C50 25 59 15 71 26 C85 39 82 59 50 84 Z"/>') },
+ { id:'flower', name:'Flower', svg: svgWrap('<circle cx="50" cy="25" r="10"/><circle cx="67" cy="35" r="10"/><circle cx="61" cy="57" r="10"/><circle cx="39" cy="57" r="10"/><circle cx="33" cy="35" r="10"/><circle cx="50" cy="42" r="7"/><path d="M50 67 Q48 78 50 91"/><path d="M50 79 Q37 76 35 64 Q48 67 50 79 Z"/>') },
+ { id:'tree',  name:'Tree',  svg: svgWrap('<circle cx="50" cy="32" r="16"/><circle cx="33" cy="45" r="12"/><circle cx="67" cy="45" r="12"/><path d="M46 90 L48 60 M54 90 L52 60 M49 44 L41 55 M51 42 L60 53"/>') },
+ { id:'house', name:'House', svg: svgWrap('<path d="M21 49 L50 25 L79 49"/><path d="M29 49 v34 h42 V49"/><path d="M63 33 v-9 h9 v15"/><rect x="44" y="63" width="12" height="20"/><circle cx="63" cy="59" r="5"/><rect x="33" y="56" width="10" height="10"/>') },
+ { id:'rocket', name:'Rocket', svg: svgWrap('<path d="M50 7 Q65 25 65 47 L65 61 L35 61 L35 47 Q35 25 50 7 Z"/><circle cx="50" cy="36" r="7"/><path d="M35 55 Q23 67 25 80 L35 71 M65 55 Q77 67 75 80 L65 71"/><path d="M44 76 Q50 93 56 76"/>') }
+];
+function presetById(id){ for (var i=0;i<PRESETS.length;i++) if (PRESETS[i].id===id) return PRESETS[i]; return null; }
+
+/* ---------------- persisted state ---------------- */
+var SKEY = 'dd-state-v1';
+var state = { lastId:null, opacity:0.55, zoom:100, outline:{} };
+try { var raw = localStorage.getItem(SKEY); if (raw) { var p = JSON.parse(raw); if (p) state = Object.assign(state, p); } } catch(e){}
+function saveState(){ try { localStorage.setItem(SKEY, JSON.stringify(state)); } catch(e){} }
+
+/* ---------------- nav core: stack + history (middle-pinch Back) ----------------
+   The glasses shell gives the page no Back key: with a history entry present
+   it calls history.back() (we see popstate); with none it opens Meta's menu.
+   So each open screen / overlay pushes exactly one entry, capped shallow. */
+var navStack = [];           /* entries: {screen:'home'|'trace'|'uploads', overlay:null|'clean'} */
+var currentScreen = 'home';
+try { history.replaceState({dd:0}, ''); } catch(e){}
+function pushNav(entry){
+  navStack.push(entry);
+  try { history.pushState({dd: navStack.length}, ''); } catch(e){}
+  applyScreen();
+}
+function applyScreen(){
+  var top = navStack.length ? navStack[navStack.length-1] : {screen:'home', overlay:null};
+  currentScreen = top.screen;
+  var screens = ['home','trace','uploads'];
+  for (var i=0;i<screens.length;i++) $('scr-'+screens[i]).classList.toggle('active', screens[i]===currentScreen);
+  $('app').classList.toggle('clean', !!top.overlay);
+  render();
+}
+var navSyncing = false;
+window.addEventListener('popstate', function(){
+  if (navSyncing) return;
+  if (navStack.length) navStack.pop();   /* one Back = exactly one level */
+  applyScreen();
+});
+function requestBack(){
+  if (!navStack.length) return;           /* at root: never trap — shell opens Meta menu */
+  try { history.back(); } catch(e){ navStack.pop(); applyScreen(); }
+}
+
+/* ---------------- cursor grids (row, col) per screen ---------------- */
+var cursorMap = { home:{r:0,c:0}, trace:{r:0,c:0}, uploads:{r:0,c:0} };
+function cursorOf(scr){ return cursorMap[scr] || {r:0,c:0}; }
+/* A grid is an array of rows; each row is an array of cells {el, act, kind} */
+var grids = { home:[], trace:[], uploads:[] };
+function clampPos(grid, pos){
+  if (!grid.length) return {r:0,c:0};
+  var r = Math.max(0, Math.min(grid.length-1, pos.r));
+  var c = Math.max(0, Math.min(grid[r].length-1, pos.c));
+  return {r:r, c:c};
+}
+function moveCursor(grid, pos, key){
+  var r = pos.r, c = pos.c;
+  if (key === 'ArrowLeft')  c = Math.max(0, c-1);
+  if (key === 'ArrowRight') c = Math.min(grid[r].length-1, c+1);
+  if (key === 'ArrowUp')    { r = Math.max(0, r-1); c = Math.min(c, grid[r].length-1); }
+  if (key === 'ArrowDown')  { r = Math.min(grid.length-1, r+1); c = Math.min(c, grid[r].length-1); }
+  return {r:r, c:c};
+}
+function paintCursor(){
+  var all = document.querySelectorAll('.fz.hl');
+  for (var i=0;i<all.length;i++) all[i].classList.remove('hl');
+  var grid = grids[currentScreen]; if (!grid || !grid.length) return;
+  var pos = clampPos(grid, cursorOf(currentScreen));
+  cursorMap[currentScreen] = pos;
+  var cell = grid[pos.r] && grid[pos.r][pos.c];
+  if (cell && cell.el) cell.el.classList.add('hl');
+}
+</script>
+
+<script>
+'use strict';
+/* ---------------- uploads: IndexedDB (same browser, this device) ---------------- */
+var uploads = [];   /* {id, name, dataURL, outlineURL} */
+var dbPromise = null;
+function openDB(){
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise(function(res, rej){
+    var rq = indexedDB.open('drawing-display', 1);
+    rq.onupgradeneeded = function(){ rq.result.createObjectStore('images', {keyPath:'id'}); };
+    rq.onsuccess = function(){ res(rq.result); };
+    rq.onerror = function(){ rej(rq.error); };
+  });
+  return dbPromise;
+}
+function dbAll(){
+  return openDB().then(function(db){
+    return new Promise(function(res){
+      var out = [], tx = db.transaction('images').objectStore('images').openCursor();
+      tx.onsuccess = function(e){ var cur = e.target.result; if (cur){ out.push(cur.value); cur.continue(); } else res(out); };
+      tx.onerror = function(){ res(out); };
+    });
+  }).catch(function(){ return []; });
+}
+function dbPut(rec){
+  return openDB().then(function(db){
+    return new Promise(function(res){ var rq = db.transaction('images','readwrite').objectStore('images').put(rec); rq.onsuccess = res; rq.onerror = res; });
+  }).catch(function(){});
+}
+function dbDel(id){
+  return openDB().then(function(db){
+    return new Promise(function(res){ var rq = db.transaction('images','readwrite').objectStore('images').delete(id); rq.onsuccess = res; rq.onerror = res; });
+  }).catch(function(){});
+}
+function uploadById(id){ for (var i=0;i<uploads.length;i++) if (uploads[i].id===id) return uploads[i]; return null; }
+
+/* ---------------- outline mode: canvas edge detection (Sobel) ---------------- */
+function makeOutline(dataURL){
+  return new Promise(function(resolve, reject){
+    var img = new Image();
+    img.onload = function(){
+      try {
+        var maxDim = 640, sc = Math.min(1, maxDim / Math.max(img.width, img.height));
+        var w = Math.max(2, Math.round(img.width*sc)), h = Math.max(2, Math.round(img.height*sc));
+        var cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+        var cx = cv.getContext('2d'); cx.drawImage(img, 0, 0, w, h);
+        var src = cx.getImageData(0, 0, w, h).data;
+        var gray = new Float32Array(w*h);
+        for (var i=0;i<w*h;i++){ gray[i] = 0.299*src[i*4] + 0.587*src[i*4+1] + 0.114*src[i*4+2]; }
+        var out = cx.createImageData(w, h), od = out.data, TH = 60;
+        for (var y=1;y<h-1;y++) for (var x=1;x<w-1;x++){
+          var idx = y*w+x;
+          var gx = -gray[idx-w-1]-2*gray[idx-1]-gray[idx+w-1]+gray[idx-w+1]+2*gray[idx+1]+gray[idx+w+1];
+          var gy = -gray[idx-w-1]-2*gray[idx-w]-gray[idx-w+1]+gray[idx+w-1]+2*gray[idx+w]+gray[idx+w+1];
+          var m = Math.sqrt(gx*gx+gy*gy);
+          var a = m <= TH ? 0 : Math.min(255, (m-TH)*2.2);
+          od[idx*4]=255; od[idx*4+1]=244; od[idx*4+2]=224; od[idx*4+3]=a;
+        }
+        cx.putImageData(out, 0, 0);
+        resolve(cv.toDataURL('image/png'));
+      } catch(err){ reject(err); }
+    };
+    img.onerror = reject;
+    img.src = dataURL;
+  });
+}
+
+/* ---------------- current picture + trace state ---------------- */
+var current = null;         /* {kind:'preset'|'upload', id, name} */
+var nudge = {x:0, y:0};
+var nudgeMode = false;
+var outlineBusy = false;
+
+function currentSrc(){
+  if (!current) return null;
+  if (current.kind === 'preset') return { svg: presetById(current.id).svg };
+  var up = uploadById(current.id); if (!up) return null;
+  if (state.outline[current.id] && up.outlineURL) return { url: up.outlineURL };
+  return { url: up.dataURL };
+}
+function applyStageTransform(){
+  var el = $('stageImg'); if (!el) return;
+  el.style.transform = 'translate(' + nudge.x + 'px,' + nudge.y + 'px) scale(' + (state.zoom/100) + ')';
+  el.style.opacity = state.opacity;
+}
+function showCurrent(animate){
+  var holder = $('stageImg');
+  var src = currentSrc(); if (!src) return;
+  if (src.svg) holder.innerHTML = src.svg;
+  else holder.innerHTML = '<img alt="" src="' + src.url + '">';
+  applyStageTransform();
+  if (animate){ var w = $('stageImgWrap'); w.classList.remove('enterAnim'); void w.offsetWidth; w.classList.add('enterAnim'); }
+  $('traceName').textContent = current.name;
+  $('traceKind').textContent = current.kind === 'preset' ? 'LINE ART' :
+    (state.outline[current.id] ? 'OUTLINE' : 'PICTURE');
+}
+function openTrace(kind, id, name){
+  current = {kind:kind, id:id, name:name};
+  nudge = {x:0, y:0}; nudgeMode = false;
+  state.lastId = (kind === 'preset' ? 'p:' : 'u:') + id; saveState();
+  cursorMap.trace = {r:0, c:0};
+  pushNav({screen:'trace', overlay:null});
+  showCurrent(true);
+}
+async function toggleOutline(){
+  if (!current || current.kind !== 'upload' || outlineBusy) return;
+  var id = current.id, up = uploadById(id); if (!up) return;
+  if (!state.outline[id] && !up.outlineURL){
+    outlineBusy = true; render();
+    try { up.outlineURL = await makeOutline(up.dataURL); dbPut(up); }
+    catch(e){ outlineBusy = false; render(); return; }
+    outlineBusy = false;
+  }
+  state.outline[id] = !state.outline[id]; saveState();
+  showCurrent(true); render();
+}
+
+/* ---------------- rendering + grid building ---------------- */
+function cell(el, act, kind){ return {el:el, act:act, kind:kind||''}; }
+
+function buildHome(){
+  var grid = $('grid'); grid.innerHTML = '';
+  var rows = [];
+  for (var r=0; r<3; r++){
+    var rowCells = [];
+    for (var c=0; c<4; c++){
+      (function(p){
+        var b = document.createElement('button');
+        b.className = 'fz tile' + (state.lastId === 'p:'+p.id ? ' last' : '');
+        b.innerHTML = p.svg + '<div class="tname">' + p.name + '</div>';
+        b.addEventListener('click', function(){ openTrace('preset', p.id, p.name); });
+        grid.appendChild(b);
+        rowCells.push(cell(b, function(){ openTrace('preset', p.id, p.name); }));
+      })(PRESETS[r*4+c]);
+    }
+    rows.push(rowCells);
+  }
+  var up = $('btnUpload'), mine = $('btnMine');
+  mine.textContent = 'My pictures (' + uploads.length + ')';
+  rows.push([ cell(up, function(){ openUploads(); }), cell(mine, function(){ openUploads(); }) ]);
+  grids.home = rows;
+}
+function openUploads(){ cursorMap.uploads = {r:0, c:0}; pushNav({screen:'uploads', overlay:null}); }
+
+function buildUploads(){
+  var list = $('upList'); list.innerHTML = '';
+  $('upEmpty').style.display = uploads.length ? 'none' : 'block';
+  var rows = [ [ cell($('btnAdd'), function(){ $('fileInput').click(); }) ] ];
+  uploads.forEach(function(u){
+    var row = document.createElement('div'); row.className = 'urow';
+    var open = document.createElement('button'); open.className = 'fz open'; open.textContent = '🖼  ' + u.name;
+    var del = document.createElement('button'); del.className = 'fz del'; del.textContent = '✕';
+    open.addEventListener('click', function(){ openTrace('upload', u.id, u.name); });
+    del.addEventListener('click', function(){ deleteUpload(u.id); });
+    row.appendChild(open); row.appendChild(del); list.appendChild(row);
+    rows.push([ cell(open, function(){ openTrace('upload', u.id, u.name); }),
+                cell(del, function(){ deleteUpload(u.id); }) ]);
+  });
+  grids.uploads = rows;
+}
+function deleteUpload(id){
+  uploads = uploads.filter(function(u){ return u.id !== id; });
+  delete state.outline[id]; saveState(); dbDel(id); render();
+}
+
+function buildTrace(){
+  var box = $('controls'); box.innerHTML = '';
+  $('modeBanner').className = nudgeMode ? 'show' : '';
+  $('modeBanner').id = 'modeBanner';
+  if (nudgeMode) $('modeBanner').textContent = 'NUDGE — swipes move the picture · pinch to stop';
+  var rows = [];
+  function mkBtn(label, act, cls){
+    var b = document.createElement('button');
+    b.className = 'fz cbtn' + (cls ? ' ' + cls : '');
+    b.textContent = label;
+    b.addEventListener('click', act);
+    return {b:b, c:cell(b, act)};
+  }
+  /* row 0: zoom − / ＋ / quick 100% */
+  var r0 = document.createElement('div'); r0.className = 'crow';
+  var zm = mkBtn('−', function(){ setZoom(state.zoom - 25); });
+  var zp = mkBtn('＋', function(){ setZoom(state.zoom + 25); });
+  var zq = mkBtn('100% · now ' + state.zoom + '%', function(){ setZoom(100); });
+  r0.appendChild(zm.b); r0.appendChild(zp.b); r0.appendChild(zq.b); box.appendChild(r0);
+  rows.push([zm.c, zp.c, zq.c]);
+  /* row 1: percentage presets */
+  var r1 = document.createElement('div'); r1.className = 'crow';
+  var presetCells = [];
+  [50,100,150,200].forEach(function(pv){
+    var it = mkBtn(pv + '%', function(){ setZoom(pv); }, 'small' + (state.zoom === pv ? ' on' : ''));
+    r1.appendChild(it.b); presetCells.push(it.c);
+  });
+  box.appendChild(r1); rows.push(presetCells);
+  /* row 2: transparency slider (Left/Right adjust while focused) */
+  var r2 = document.createElement('div'); r2.className = 'crow';
+  var sc = document.createElement('div'); sc.className = 'fz'; sc.id = 'sliderCell';
+  sc.innerHTML = '<div class="lab">Transparency</div><div id="sliderTrack"><div id="sliderFill"></div></div><div id="sliderVal"></div>';
+  sc.addEventListener('click', function(){ cursorMap.trace = {r:2, c:0}; paintCursor(); });
+  r2.appendChild(sc); box.appendChild(r2);
+  rows.push([ cell(sc, function(){}, 'slider') ]);
+  /* row 3: outline (uploads only) / nudge / trace mode */
+  var r3 = document.createElement('div'); r3.className = 'crow';
+  var rowCells3 = [];
+  if (current && current.kind === 'upload'){
+    var ob = mkBtn(outlineBusy ? 'Working…' : ('Outline: ' + (state.outline[current.id] ? 'On' : 'Off')),
+                   function(){ toggleOutline(); }, state.outline[current.id] ? 'on' : '');
+    r3.appendChild(ob.b); rowCells3.push(ob.c);
+  }
+  var nb = mkBtn('Nudge: ' + (nudgeMode ? 'On' : 'Off'), function(){ toggleNudge(); }, nudgeMode ? 'on' : '');
+  var tb = mkBtn('Trace mode', function(){ enterClean(); });
+  r3.appendChild(nb.b); r3.appendChild(tb.b);
+  rowCells3.push(nb.c, tb.c);
+  box.appendChild(r3); rows.push(rowCells3);
+  grids.trace = rows;
+  updateSlider();
+}
+function updateSlider(){
+  var fill = $('sliderFill'), val = $('sliderVal');
+  if (fill) fill.style.width = Math.round(state.opacity*100) + '%';
+  if (val) val.textContent = Math.round(state.opacity*100) + '%';
+}
+function setZoom(pv){
+  state.zoom = Math.max(25, Math.min(300, pv)); saveState();
+  applyStageTransform(); render();
+}
+function toggleNudge(){ nudgeMode = !nudgeMode; render(); }
+function enterClean(){ pushNav({screen:'trace', overlay:'clean'}); }
+
+function render(){
+  if (currentScreen === 'home') buildHome();
+  else if (currentScreen === 'uploads') buildUploads();
+  else if (currentScreen === 'trace') buildTrace();
+  paintCursor();
+}
+
+/* ---------------- input: keydown zone/cursor model ONLY ---------------- */
+document.addEventListener('keydown', function(e){
+  var top = navStack.length ? navStack[navStack.length-1] : null;
+  if (top && top.overlay === 'clean'){
+    /* trace-clean: any Back dismisses the overlay first (popstate path) */
+    if (e.key === 'Escape' || e.key === 'Backspace'){ e.preventDefault(); requestBack(); }
+    return;   /* arrows/enter do nothing while tracing clean */
+  }
+  if (e.key === 'Escape'){ requestBack(); return; }
+  var grid = grids[currentScreen]; if (!grid || !grid.length) return;
+  var pos = clampPos(grid, cursorOf(currentScreen));
+  var cur = grid[pos.r] && grid[pos.r][pos.c];
+
+  if (currentScreen === 'trace' && nudgeMode){
+    var step = 6, moved = true;
+    if (e.key === 'ArrowLeft') nudge.x -= step;
+    else if (e.key === 'ArrowRight') nudge.x += step;
+    else if (e.key === 'ArrowUp') nudge.y -= step;
+    else if (e.key === 'ArrowDown') nudge.y += step;
+    else if (e.key === 'Enter'){ toggleNudge(); }
+    else moved = false;
+    if (moved){ e.preventDefault(); applyStageTransform(); }
+    return;
+  }
+  if (cur && cur.kind === 'slider' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')){
+    e.preventDefault();
+    var d = e.key === 'ArrowRight' ? 0.05 : -0.05;
+    state.opacity = Math.max(0.1, Math.min(1, Math.round((state.opacity + d)*100)/100));
+    saveState(); applyStageTransform(); updateSlider();
+    return;
+  }
+  if (e.key === 'Enter'){
+    e.preventDefault();
+    if (cur && cur.act) cur.act();
+    return;
+  }
+  if (e.key.indexOf('Arrow') === 0){
+    e.preventDefault();
+    cursorMap[currentScreen] = moveCursor(grid, pos, e.key);
+    paintCursor();
+  }
+});
+
+/* click = mouse convenience for desktop testing; glasses activation is keydown-only */
+$('btnUpload').addEventListener('click', openUploads);
+$('btnMine').addEventListener('click', openUploads);
+$('btnAdd').addEventListener('click', function(){ $('fileInput').click(); });
+
+/* ---------------- file intake ---------------- */
+$('fileInput').addEventListener('change', function(){
+  var f = this.files && this.files[0]; this.value = '';
+  if (!f) return;
+  var reader = new FileReader();
+  reader.onload = function(){
+    var rec = { id: 'u' + Date.now(), name: f.name.replace(/\.[^.]+$/, '').slice(0, 28) || 'Picture',
+                dataURL: reader.result, outlineURL: null };
+    uploads.unshift(rec); dbPut(rec); render();
+  };
+  reader.readAsDataURL(f);
+});
+
+/* ---------------- boot ---------------- */
+dbAll().then(function(list){
+  uploads = list || [];
+  applyScreen();
+  /* restore last picture's highlight position on the home grid */
+  if (state.lastId && state.lastId.indexOf('p:') === 0){
+    var p = presetById(state.lastId.slice(2));
+    if (p){ var idx = PRESETS.indexOf(p); cursorMap.home = {r: Math.floor(idx/4), c: idx%4}; paintCursor(); }
+  }
+});
+applyScreen();
+</script>
+</body>
+</html>
